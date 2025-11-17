@@ -1,6 +1,7 @@
 import { ArrowRight, Mail, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import { supabase, type EmailCapture } from '../lib/supabase';
+import { track } from '@vercel/analytics';
 
 export default function CTA() {
   const [email, setEmail] = useState('');
@@ -33,6 +34,11 @@ export default function CTA() {
         }
       } else {
         console.log('Waitlist email successfully captured:', email);
+        // Track email submission event
+        track('email_submitted', {
+          source: 'cta',
+          location: 'cta_section'
+        });
         setSubmitted(true);
         setEmail('');
         setTimeout(() => setSubmitted(false), 5000);

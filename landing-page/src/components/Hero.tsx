@@ -1,6 +1,7 @@
 import { ArrowRight, FileText, MessageSquare, PlayCircle } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { supabase, type EmailCapture } from '../lib/supabase';
+import { track } from '@vercel/analytics';
 
 export default function Hero() {
   const [email, setEmail] = useState('');
@@ -37,6 +38,11 @@ export default function Hero() {
         }
       } else {
         console.log('Email successfully captured:', email);
+        // Track email submission event
+        track('email_submitted', {
+          source: 'hero',
+          location: 'hero_section'
+        });
         setSubmitted(true);
         setTimeout(() => {
           setSubmitted(false);
