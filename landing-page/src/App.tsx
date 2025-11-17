@@ -6,6 +6,7 @@ import UseCases from './components/UseCases'
 import Pricing from './components/Pricing'
 import CTA from './components/CTA'
 import Footer from './components/Footer'
+import VercelAnalytics from './components/VercelAnalytics'
 import './App.css'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
       <Pricing />
       <CTA />
       <Footer />
+      <VercelAnalytics />
     </div>
   )
 }
