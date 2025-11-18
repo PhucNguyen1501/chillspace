@@ -10,6 +10,16 @@
 }
 
 @layer components {
+  /* Apply sharp corners to cards */
+  .card {
+    border-radius: 0 !important;
+  }
+  
+  /* Apply sharp corners to buttons */
+  button {
+    border-radius: 0 !important;
+  }
+  
   .gradient-text {
     @apply text-gray-900 font-bold;
   }

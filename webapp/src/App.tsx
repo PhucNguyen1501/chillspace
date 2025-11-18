@@ -3,6 +3,10 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import LoginForm from '@/components/auth/LoginForm'
 import SignupForm from '@/components/auth/SignupForm'
 import Dashboard from '@/pages/Dashboard'
+import Connections from '@/pages/Connections'
+import ConnectionForm from '@/pages/ConnectionForm'
+import Endpoints from '@/pages/Endpoints'
+import QueryBuilder from '@/pages/QueryBuilder'
 import Spinner from '@/components/ui/Spinner'
 import { Analytics } from '@vercel/analytics/react'
 
@@ -63,6 +67,33 @@ function AppRoutes() {
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <Dashboard />
+        </ProtectedRoute>
+      } />
+      
+      {/* API Connections */}
+      <Route path="/connections" element={
+        <ProtectedRoute>
+          <Connections />
+        </ProtectedRoute>
+      } />
+      <Route path="/connections/new" element={
+        <ProtectedRoute>
+          <ConnectionForm />
+        </ProtectedRoute>
+      } />
+      <Route path="/connections/:id/edit" element={
+        <ProtectedRoute>
+          <ConnectionForm />
+        </ProtectedRoute>
+      } />
+      <Route path="/connections/:connectionId/endpoints" element={
+        <ProtectedRoute>
+          <Endpoints />
+        </ProtectedRoute>
+      } />
+      <Route path="/connections/:connectionId/query" element={
+        <ProtectedRoute>
+          <QueryBuilder />
         </ProtectedRoute>
       } />
       
