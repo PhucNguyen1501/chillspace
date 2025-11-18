@@ -1,12 +1,38 @@
--- ChillSpace Database Schema
--- Run this SQL in your Supabase SQL Editor
+-- ChillSpace Database Schema - FRESH START
+-- This script drops all existing tables and recreates everything
+-- WARNING: This will delete all existing data!
 
 -- ==============================================
--- TABLES
+-- CLEANUP - Drop everything first
+-- ==============================================
+
+-- Drop all triggers first
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+DROP TRIGGER IF EXISTS update_api_connections_updated_at ON api_connections;
+
+-- Drop all tables in correct order (considering foreign key dependencies)
+DROP TABLE IF EXISTS team_members CASCADE;
+DROP TABLE IF EXISTS usage_analytics CASCADE;
+DROP TABLE IF EXISTS execution_history CASCADE;
+DROP TABLE IF EXISTS scheduled_jobs CASCADE;
+DROP TABLE IF EXISTS saved_queries CASCADE;
+DROP TABLE IF EXISTS api_endpoints CASCADE;
+DROP TABLE IF EXISTS api_connections CASCADE;
+DROP TABLE IF EXISTS email_captures CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+
+-- Drop all functions
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
+DROP FUNCTION IF EXISTS public.validate_email_format() CASCADE;
+
+-- ==============================================
+-- TABLES - Recreate from scratch
 -- ==============================================
 
 -- Email captures from landing page and signups
-CREATE TABLE IF NOT EXISTS email_captures (
+CREATE TABLE email_captures (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   email TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('hero', 'cta', 'signup')),
@@ -15,7 +41,7 @@ CREATE TABLE IF NOT EXISTS email_captures (
 );
 
 -- User profiles (extends auth.users)
-CREATE TABLE IF NOT EXISTS profiles (
+CREATE TABLE profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
@@ -27,7 +53,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 -- API connections and endpoints
-CREATE TABLE IF NOT EXISTS api_connections (
+CREATE TABLE api_connections (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
@@ -40,7 +66,7 @@ CREATE TABLE IF NOT EXISTS api_connections (
 );
 
 -- API endpoints extracted from documentation
-CREATE TABLE IF NOT EXISTS api_endpoints (
+CREATE TABLE api_endpoints (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   connection_id UUID REFERENCES api_connections(id) ON DELETE CASCADE NOT NULL,
   method TEXT NOT NULL CHECK (method IN ('GET', 'POST', 'PUT', 'DELETE', 'PATCH')),
@@ -52,7 +78,7 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
 );
 
 -- Saved queries and templates
-CREATE TABLE IF NOT EXISTS saved_queries (
+CREATE TABLE saved_queries (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   connection_id UUID REFERENCES api_connections(id) ON DELETE CASCADE NOT NULL,
@@ -66,7 +92,7 @@ CREATE TABLE IF NOT EXISTS saved_queries (
 );
 
 -- Scheduled data extraction jobs
-CREATE TABLE IF NOT EXISTS scheduled_jobs (
+CREATE TABLE scheduled_jobs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   query_id UUID REFERENCES saved_queries(id) ON DELETE CASCADE NOT NULL,
@@ -82,7 +108,7 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
 );
 
 -- Execution history and results
-CREATE TABLE IF NOT EXISTS execution_history (
+CREATE TABLE execution_history (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   query_id UUID REFERENCES saved_queries(id) ON DELETE SET NULL,
@@ -101,7 +127,7 @@ CREATE TABLE IF NOT EXISTS execution_history (
 );
 
 -- Usage analytics
-CREATE TABLE IF NOT EXISTS usage_analytics (
+CREATE TABLE usage_analytics (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   event_type TEXT NOT NULL,
@@ -110,7 +136,7 @@ CREATE TABLE IF NOT EXISTS usage_analytics (
 );
 
 -- Team management (for future features)
-CREATE TABLE IF NOT EXISTS team_members (
+CREATE TABLE team_members (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   team_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   member_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
@@ -123,180 +149,20 @@ CREATE TABLE IF NOT EXISTS team_members (
 -- INDEXES
 -- ==============================================
 
-CREATE INDEX IF NOT EXISTS idx_email_captures_email ON email_captures(email);
-CREATE INDEX IF NOT EXISTS idx_email_captures_source ON email_captures(source);
-CREATE INDEX IF NOT EXISTS idx_email_captures_created_at ON email_captures(created_at);
+CREATE INDEX idx_email_captures_email ON email_captures(email);
+CREATE INDEX idx_email_captures_source ON email_captures(source);
+CREATE INDEX idx_email_captures_created_at ON email_captures(created_at);
 
-CREATE INDEX IF NOT EXISTS idx_api_connections_user_id ON api_connections(user_id);
-CREATE INDEX IF NOT EXISTS idx_api_endpoints_connection_id ON api_endpoints(connection_id);
-CREATE INDEX IF NOT EXISTS idx_saved_queries_user_id ON saved_queries(user_id);
-CREATE INDEX IF NOT EXISTS idx_saved_queries_connection_id ON saved_queries(connection_id);
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_user_id ON scheduled_jobs(user_id);
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_is_active ON scheduled_jobs(is_active);
-CREATE INDEX IF NOT EXISTS idx_execution_history_user_id ON execution_history(user_id);
-CREATE INDEX IF NOT EXISTS idx_execution_history_created_at ON execution_history(created_at);
-CREATE INDEX IF NOT EXISTS idx_usage_analytics_user_id ON usage_analytics(user_id);
-CREATE INDEX IF NOT EXISTS idx_usage_analytics_created_at ON usage_analytics(created_at);
-
--- ==============================================
--- ROW LEVEL SECURITY (RLS)
--- ==============================================
-
--- Enable RLS on all tables
-ALTER TABLE email_captures ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE api_connections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE api_endpoints ENABLE ROW LEVEL SECURITY;
-ALTER TABLE saved_queries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE scheduled_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE execution_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE usage_analytics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
-
--- Email Captures: Allow anyone to insert (for landing page)
-DROP POLICY IF EXISTS "Anyone can insert email captures" ON email_captures;
-CREATE POLICY "Anyone can insert email captures" ON email_captures
-  FOR INSERT WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Anyone can read email captures" ON email_captures;
-CREATE POLICY "Anyone can read email captures" ON email_captures
-  FOR SELECT USING (true);
-
--- Profiles: Users can only access their own profile
-DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
-CREATE POLICY "Users can view own profile" ON profiles
-  FOR SELECT USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-CREATE POLICY "Users can update own profile" ON profiles
-  FOR UPDATE USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
-CREATE POLICY "Users can insert own profile" ON profiles
-  FOR INSERT WITH CHECK (auth.uid() = id);
-
--- API Connections: Users can only access their own connections
-DROP POLICY IF EXISTS "Users can view own API connections" ON api_connections;
-CREATE POLICY "Users can view own API connections" ON api_connections
-  FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can create own API connections" ON api_connections;
-CREATE POLICY "Users can create own API connections" ON api_connections
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own API connections" ON api_connections;
-CREATE POLICY "Users can update own API connections" ON api_connections
-  FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can delete own API connections" ON api_connections;
-CREATE POLICY "Users can delete own API connections" ON api_connections
-  FOR DELETE USING (auth.uid() = user_id);
-
--- API Endpoints: Users can access endpoints for their connections
-DROP POLICY IF EXISTS "Users can view own API endpoints" ON api_endpoints;
-CREATE POLICY "Users can view own API endpoints" ON api_endpoints
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM api_connections
-      WHERE api_connections.id = api_endpoints.connection_id
-      AND api_connections.user_id = auth.uid()
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can create own API endpoints" ON api_endpoints;
-CREATE POLICY "Users can create own API endpoints" ON api_endpoints
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM api_connections
-      WHERE api_connections.id = connection_id
-      AND api_connections.user_id = auth.uid()
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can update own API endpoints" ON api_endpoints;
-CREATE POLICY "Users can update own API endpoints" ON api_endpoints
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM api_connections
-      WHERE api_connections.id = api_endpoints.connection_id
-      AND api_connections.user_id = auth.uid()
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can delete own API endpoints" ON api_endpoints;
-CREATE POLICY "Users can delete own API endpoints" ON api_endpoints
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM api_connections
-      WHERE api_connections.id = api_endpoints.connection_id
-      AND api_connections.user_id = auth.uid()
-    )
-  );
-
--- Saved Queries: Users can only access their own queries
-DROP POLICY IF EXISTS "Users can view own saved queries" ON saved_queries;
-CREATE POLICY "Users can view own saved queries" ON saved_queries
-  FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can create own saved queries" ON saved_queries;
-CREATE POLICY "Users can create own saved queries" ON saved_queries
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own saved queries" ON saved_queries;
-CREATE POLICY "Users can update own saved queries" ON saved_queries
-  FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can delete own saved queries" ON saved_queries;
-CREATE POLICY "Users can delete own saved queries" ON saved_queries
-  FOR DELETE USING (auth.uid() = user_id);
-
--- Scheduled Jobs: Users can only access their own jobs
-DROP POLICY IF EXISTS "Users can view own scheduled jobs" ON scheduled_jobs;
-CREATE POLICY "Users can view own scheduled jobs" ON scheduled_jobs
-  FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can create own scheduled jobs" ON scheduled_jobs;
-CREATE POLICY "Users can create own scheduled jobs" ON scheduled_jobs
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own scheduled jobs" ON scheduled_jobs;
-CREATE POLICY "Users can update own scheduled jobs" ON scheduled_jobs
-  FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can delete own scheduled jobs" ON scheduled_jobs;
-CREATE POLICY "Users can delete own scheduled jobs" ON scheduled_jobs
-  FOR DELETE USING (auth.uid() = user_id);
-
--- Execution History: Users can only access their own history
-DROP POLICY IF EXISTS "Users can view own execution history" ON execution_history;
-CREATE POLICY "Users can view own execution history" ON execution_history
-  FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can insert own execution history" ON execution_history;
-CREATE POLICY "Users can insert own execution history" ON execution_history
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Usage Analytics: Users can only access their own analytics
-DROP POLICY IF EXISTS "Users can view own usage analytics" ON usage_analytics;
-CREATE POLICY "Users can view own usage analytics" ON usage_analytics
-  FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can insert own usage analytics" ON usage_analytics;
-CREATE POLICY "Users can insert own usage analytics" ON usage_analytics
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Team Members: Users can view their team memberships
-DROP POLICY IF EXISTS "Users can view own team memberships" ON team_members;
-CREATE POLICY "Users can view own team memberships" ON team_members
-  FOR SELECT USING (auth.uid() = member_id OR auth.uid() = team_id);
-
-DROP POLICY IF EXISTS "Team owners can insert team members" ON team_members;
-CREATE POLICY "Team owners can insert team members" ON team_members
-  FOR INSERT WITH CHECK (auth.uid() = team_id);
-
-DROP POLICY IF EXISTS "Team owners can delete team members" ON team_members;
-CREATE POLICY "Team owners can delete team members" ON team_members
-  FOR DELETE USING (auth.uid() = team_id);
+CREATE INDEX idx_api_connections_user_id ON api_connections(user_id);
+CREATE INDEX idx_api_endpoints_connection_id ON api_endpoints(connection_id);
+CREATE INDEX idx_saved_queries_user_id ON saved_queries(user_id);
+CREATE INDEX idx_saved_queries_connection_id ON saved_queries(connection_id);
+CREATE INDEX idx_scheduled_jobs_user_id ON scheduled_jobs(user_id);
+CREATE INDEX idx_scheduled_jobs_is_active ON scheduled_jobs(is_active);
+CREATE INDEX idx_execution_history_user_id ON execution_history(user_id);
+CREATE INDEX idx_execution_history_created_at ON execution_history(created_at);
+CREATE INDEX idx_usage_analytics_user_id ON usage_analytics(user_id);
+CREATE INDEX idx_usage_analytics_created_at ON usage_analytics(created_at);
 
 -- ==============================================
 -- FUNCTIONS
@@ -336,12 +202,6 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to create profile on user signup
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -351,12 +211,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- ==============================================
+-- TRIGGERS
+-- ==============================================
+
+-- Trigger to create profile on user signup
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 -- Triggers for updated_at
-DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_api_connections_updated_at ON api_connections;
 CREATE TRIGGER update_api_connections_updated_at BEFORE UPDATE ON api_connections
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -364,19 +231,142 @@ CREATE TRIGGER update_api_connections_updated_at BEFORE UPDATE ON api_connection
 -- CONSTRAINTS
 -- ==============================================
 
--- Add email format validation (idempotent)
-ALTER TABLE email_captures 
-DROP CONSTRAINT IF EXISTS valid_email_format;
-
+-- Add email format validation
 ALTER TABLE email_captures 
 ADD CONSTRAINT valid_email_format 
 CHECK (validate_email_format(email));
 
 -- ==============================================
--- INITIAL DATA (Optional)
+-- ROW LEVEL SECURITY (RLS)
 -- ==============================================
 
--- You can add any initial/seed data here if needed
+-- Enable RLS on all tables
+ALTER TABLE email_captures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_endpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_queries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE execution_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_analytics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+
+-- Email Captures: Allow anyone to insert (for landing page)
+CREATE POLICY "Anyone can insert email captures" ON email_captures
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Anyone can read email captures" ON email_captures
+  FOR SELECT USING (true);
+
+-- Profiles: Users can only access their own profile
+CREATE POLICY "Users can view own profile" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- API Connections: Users can only access their own connections
+CREATE POLICY "Users can view own API connections" ON api_connections
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create own API connections" ON api_connections
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own API connections" ON api_connections
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own API connections" ON api_connections
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- API Endpoints: Users can access endpoints for their connections
+CREATE POLICY "Users can view own API endpoints" ON api_endpoints
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM api_connections
+      WHERE api_connections.id = api_endpoints.connection_id
+      AND api_connections.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can create own API endpoints" ON api_endpoints
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM api_connections
+      WHERE api_connections.id = connection_id
+      AND api_connections.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update own API endpoints" ON api_endpoints
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM api_connections
+      WHERE api_connections.id = api_endpoints.connection_id
+      AND api_connections.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete own API endpoints" ON api_endpoints
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM api_connections
+      WHERE api_connections.id = api_endpoints.connection_id
+      AND api_connections.user_id = auth.uid()
+    )
+  );
+
+-- Saved Queries: Users can only access their own queries
+CREATE POLICY "Users can view own saved queries" ON saved_queries
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create own saved queries" ON saved_queries
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own saved queries" ON saved_queries
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own saved queries" ON saved_queries
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Scheduled Jobs: Users can only access their own jobs
+CREATE POLICY "Users can view own scheduled jobs" ON scheduled_jobs
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create own scheduled jobs" ON scheduled_jobs
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own scheduled jobs" ON scheduled_jobs
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own scheduled jobs" ON scheduled_jobs
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- Execution History: Users can only access their own history
+CREATE POLICY "Users can view own execution history" ON execution_history
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own execution history" ON execution_history
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Usage Analytics: Users can only access their own analytics
+CREATE POLICY "Users can view own usage analytics" ON usage_analytics
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own usage analytics" ON usage_analytics
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Team Members: Users can view their team memberships
+CREATE POLICY "Users can view own team memberships" ON team_members
+  FOR SELECT USING (auth.uid() = member_id OR auth.uid() = team_id);
+
+CREATE POLICY "Team owners can insert team members" ON team_members
+  FOR INSERT WITH CHECK (auth.uid() = team_id);
+
+CREATE POLICY "Team owners can delete team members" ON team_members
+  FOR DELETE USING (auth.uid() = team_id);
 
 -- ==============================================
 -- PERMISSIONS
@@ -393,6 +383,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Database schema created successfully!';
+  RAISE NOTICE 'Fresh database schema created successfully!';
+  RAISE NOTICE 'All tables, indexes, functions, triggers, and policies have been recreated.';
   RAISE NOTICE 'You can now use the ChillSpace web application.';
 END $$;
