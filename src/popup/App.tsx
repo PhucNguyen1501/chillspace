@@ -1,21 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Database, Search, Calendar, Settings } from 'lucide-react';
+import { Database, Search, Calendar, Settings, LogIn } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import QueryInput from './components/QueryInput';
 import ApiPreview from './components/ApiPreview';
 import JobScheduler from './components/JobScheduler';
 import ResponseViewer from './components/ResponseViewer';
+import AuthModal from '../components/auth/AuthModal';
+import UserMenu from '../components/auth/UserMenu';
 import type { ApiSchema, GeneratedApiCall } from '../types';
 
 type Tab = 'query' | 'jobs' | 'schemas' | 'settings';
 
-function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('query');
   const [schemas, setSchemas] = useState<ApiSchema[]>([]);
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
   const [generatedQuery, setGeneratedQuery] = useState<GeneratedApiCall | null>(null);
   const [response, setResponse] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     // Load schemas from storage
@@ -28,6 +35,20 @@ function App() {
       }
     });
   }, []);
+
+  const handleSignIn = () => {
+    setAuthMode('login');
+    setAuthModalOpen(true);
+  };
+
+  const handleSignUp = () => {
+    setAuthMode('signup');
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthModalClose = () => {
+    setAuthModalOpen(false);
+  };
 
   const handleParseCurrentPage = async () => {
     setLoading(true);
@@ -111,16 +132,45 @@ function App() {
     { id: 'settings' as Tab, label: 'Settings', icon: Settings },
   ];
 
+  if (authLoading) {
+    return (
+      <div className="w-[600px] h-[700px] bg-background text-foreground flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-[600px] h-[700px] bg-background text-foreground flex flex-col">
       <Toaster position="top-center" richColors />
       
       {/* Header */}
       <div className="border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold">API Doc Query Builder</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          Convert natural language to API queries
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-lg font-semibold">API Doc Query Builder</h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Convert natural language to API queries
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {user ? (
+              <UserMenu />
+            ) : (
+              <button
+                onClick={handleSignIn}
+                className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground text-xs rounded-md hover:opacity-90 transition-opacity"
+              >
+                <LogIn className="w-3 h-3" />
+                Sign In
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -254,6 +304,38 @@ function App() {
           <div className="p-4 space-y-4">
             <h2 className="text-sm font-semibold mb-4">Settings</h2>
             
+            {!user && (
+              <div className="p-4 bg-accent/20 rounded-md border border-accent">
+                <h3 className="text-sm font-medium mb-2">Authentication Required</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Sign in to sync your schemas and queries across devices
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSignIn}
+                    className="flex-1 px-3 py-1.5 bg-primary text-primary-foreground text-xs rounded-md hover:opacity-90 transition-opacity"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={handleSignUp}
+                    className="flex-1 px-3 py-1.5 bg-secondary text-secondary-foreground text-xs rounded-md hover:opacity-90 transition-opacity"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {user && (
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-800">
+                <h3 className="text-sm font-medium mb-1 text-green-800 dark:text-green-200">Signed In</h3>
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  {user.email}
+                </p>
+              </div>
+            )}
+            
             <div>
               <label className="block text-sm font-medium mb-2">
                 Theme
@@ -326,7 +408,21 @@ function App() {
           </div>
         )}
       </div>
+      
+      <AuthModal 
+        isOpen={authModalOpen} 
+        onClose={handleAuthModalClose} 
+        initialMode={authMode}
+      />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
