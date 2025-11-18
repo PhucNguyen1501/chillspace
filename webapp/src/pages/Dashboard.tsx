@@ -2,10 +2,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useEffect, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { Zap, FileText, Calendar, BarChart3, Plus, Database, Search, Pause, Play, Square, ExternalLink } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Zap, FileText, Calendar, BarChart3, Plus, Database, Search, Pause, Play, Square, MessageSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ApiConnection } from '@/types/database'
+import ConnectionModal from '@/components/modals/ConnectionModal'
+import QueryBuilderModal from '@/components/modals/QueryBuilderModal'
+import UserProfileDropdown from '@/components/user/UserProfileDropdown'
 
 export default function Dashboard() {
   const { profile, user } = useAuth()
@@ -13,6 +15,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedConnections, setSelectedConnections] = useState<string[]>([])
+
+  // Modal states
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false)
+  const [isQueryBuilderModalOpen, setIsQueryBuilderModalOpen] = useState(false)
+  const [editingConnection, setEditingConnection] = useState<ApiConnection | null>(null)
+  const [selectedConnectionForQuery, setSelectedConnectionForQuery] = useState<ApiConnection | null>(null)
 
   useEffect(() => {
     if (user) {
@@ -77,6 +85,31 @@ export default function Dashboard() {
     alert(`Stop functionality coming soon for ${selectedConnections.length} connections`)
   }
 
+  // Modal handlers
+  const openConnectionModal = (connection?: ApiConnection) => {
+    setEditingConnection(connection || null)
+    setIsConnectionModalOpen(true)
+  }
+
+  const closeConnectionModal = () => {
+    setIsConnectionModalOpen(false)
+    setEditingConnection(null)
+  }
+
+  const openQueryBuilderModal = (connection: ApiConnection) => {
+    setSelectedConnectionForQuery(connection)
+    setIsQueryBuilderModalOpen(true)
+  }
+
+  const closeQueryBuilderModal = () => {
+    setIsQueryBuilderModalOpen(false)
+    setSelectedConnectionForQuery(null)
+  }
+
+  const onConnectionSuccess = () => {
+    loadConnections()
+  }
+
   const getAuthTypeBadge = (authType: string) => {
     const colors: Record<string, string> = {
       none: 'bg-gray-100 text-gray-700',
@@ -103,13 +136,16 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back{profile?.full_name ? `, ${profile.full_name}` : ''}!
-          </h1>
-          <p className="text-gray-600">
-            Here's what's happening with your API integrations.
-          </p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome back{profile?.full_name ? `, ${profile.full_name}` : ''}!
+            </h1>
+            <p className="text-gray-600">
+              Here's what's happening with your API integrations.
+            </p>
+          </div>
+          <UserProfileDropdown />
         </div>
 
         {/* Stats Grid */}
@@ -134,12 +170,14 @@ export default function Dashboard() {
         <Card>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">API Connections</h2>
-            <Link to="/connections/new">
-              <Button variant="primary" size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Connection
-              </Button>
-            </Link>
+            <Button 
+              variant="primary" 
+              size="sm"
+              onClick={() => openConnectionModal()}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Connection
+            </Button>
           </div>
 
           {/* Search and Filters */}
@@ -193,12 +231,14 @@ export default function Dashboard() {
               <p className="text-gray-600 mb-4">
                 {searchQuery ? 'No connections found matching your search' : 'No API connections yet'}
               </p>
-              <Link to="/connections/new">
-                <Button variant="primary" size="sm">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Your First Connection
-                </Button>
-              </Link>
+              <Button 
+                variant="primary" 
+                size="sm"
+                onClick={() => openConnectionModal()}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Connection
+              </Button>
             </div>
           ) : (
             <div className="space-y-2">
@@ -240,71 +280,41 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <Link to={`/connections/${connection.id}/endpoints`}>
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                    </Link>
-                    <Link to={`/connections/${connection.id}/edit`}>
-                      <Button variant="outline" size="sm">
-                        <Database className="w-4 h-4" />
-                      </Button>
-                    </Link>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => openQueryBuilderModal(connection)}
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => openConnectionModal(connection)}
+                    >
+                      <Database className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* View All Link */}
-          {filteredConnections.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <Link to="/connections" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-                View all connections →
-              </Link>
-            </div>
-          )}
-        </Card>
+          </Card>
 
-        {/* Getting Started */}
-        {/* <Card>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Getting Started</h2>
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="w-8 h-8 bg-accent-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-accent-600 font-bold">1</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Connect your first API</h3>
-                <p className="text-gray-600 text-sm">
-                  Add an API connection to start extracting data with natural language.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-8 h-8 bg-accent-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-accent-600 font-bold">2</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Create your first query</h3>
-                <p className="text-gray-600 text-sm">
-                  Use natural language to generate API calls automatically.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-8 h-8 bg-accent-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-accent-600 font-bold">3</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Automate with scheduling</h3>
-                <p className="text-gray-600 text-sm">
-                  Set up scheduled jobs to extract data automatically on your terms.
-                </p>
-              </div>
-            </div>
-          </div>
-        </Card> */}
+        {/* Modals */}
+        <ConnectionModal
+          isOpen={isConnectionModalOpen}
+          onClose={closeConnectionModal}
+          connection={editingConnection}
+          onSuccess={onConnectionSuccess}
+        />
+
+        <QueryBuilderModal
+          isOpen={isQueryBuilderModalOpen}
+          onClose={closeQueryBuilderModal}
+          connection={selectedConnectionForQuery}
+        />
       </div>
     </div>
   )
