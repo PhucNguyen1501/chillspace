@@ -8,6 +8,8 @@ import JobScheduler from './components/JobScheduler';
 import ResponseViewer from './components/ResponseViewer';
 import AuthModal from '../components/auth/AuthModal';
 import UserMenu from '../components/auth/UserMenu';
+import CreateJobForm from './components/CreateJobForm';
+import { DataSyncService } from '../lib/dataSync';
 import type { ApiSchema, GeneratedApiCall } from '../types';
 
 type Tab = 'query' | 'jobs' | 'schemas' | 'settings';
@@ -21,20 +23,35 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [showCreateJob, setShowCreateJob] = useState(false);
+  const [jobQuery, setJobQuery] = useState<GeneratedApiCall | null>(null);
   
   const { user, loading: authLoading } = useAuth();
+  const dataSync = DataSyncService.getInstance();
 
   useEffect(() => {
-    // Load schemas from storage
-    chrome.storage.local.get(['schemas'], (result) => {
-      if (result.schemas) {
-        setSchemas(result.schemas);
-        if (result.schemas.length > 0 && !selectedSchema) {
-          setSelectedSchema(result.schemas[0].id);
+    // Load schemas from Supabase or local storage
+    const loadSchemas = async () => {
+      try {
+        const schemas = await dataSync.loadSchemas(user?.id);
+        setSchemas(schemas);
+        if (schemas.length > 0 && !selectedSchema) {
+          setSelectedSchema(schemas[0].id);
         }
+      } catch (error) {
+        console.error('Error loading schemas:', error);
       }
-    });
-  }, []);
+    };
+
+    loadSchemas();
+  }, [user?.id]);
+
+  // Sync local data when user signs in
+  useEffect(() => {
+    if (user && !authLoading) {
+      dataSync.syncLocalToSupabase(user.id);
+    }
+  }, [user, authLoading]);
 
   const handleSignIn = () => {
     setAuthMode('login');
@@ -50,6 +67,31 @@ function AppContent() {
     setAuthModalOpen(false);
   };
 
+  const handleCreateJob = (query: GeneratedApiCall) => {
+    if (!user) {
+      // Show sign in modal if not authenticated
+      setAuthMode('login');
+      setAuthModalOpen(true);
+      return;
+    }
+    
+    setJobQuery(query);
+    setShowCreateJob(true);
+    setActiveTab('jobs');
+  };
+
+  const handleJobCreated = () => {
+    setShowCreateJob(false);
+    setJobQuery(null);
+    // Refresh the jobs tab
+    setActiveTab('jobs');
+  };
+
+  const handleJobCancelled = () => {
+    setShowCreateJob(false);
+    setJobQuery(null);
+  };
+
   const handleParseCurrentPage = async () => {
     setLoading(true);
     const toastId = toast.loading('Parsing API documentation...');
@@ -60,14 +102,19 @@ function AppContent() {
       });
       
       if (response.success) {
-        const newSchemas = [...schemas, response.data.schema];
-        setSchemas(newSchemas);
-        setSelectedSchema(response.data.schema.id);
-        await chrome.storage.local.set({ schemas: newSchemas });
+        const schema = response.data.schema;
         
-        toast.success(`Successfully parsed ${response.data.schema.title}`, {
+        // Save schema using data sync service
+        await dataSync.saveSchema(schema, user?.id);
+        
+        // Update local state
+        const newSchemas = [...schemas, schema];
+        setSchemas(newSchemas);
+        setSelectedSchema(schema.id);
+        
+        toast.success(`Successfully parsed ${schema.title}`, {
           id: toastId,
-          description: `Found ${response.data.schema.endpoints.length} endpoints`,
+          description: `Found ${schema.endpoints.length} endpoints`,
         });
       } else {
         toast.error('No API documentation found', {
@@ -85,12 +132,16 @@ function AppContent() {
     }
   };
 
-  const handleQueryGenerated = (query: GeneratedApiCall) => {
+  const handleQueryGenerated = (query: GeneratedApiCall, naturalLanguageQuery?: string) => {
     setGeneratedQuery(query);
     setResponse(null);
+    // Store the natural language query for later saving
+    if (naturalLanguageQuery) {
+      (query as any).naturalLanguageQuery = naturalLanguageQuery;
+    }
   };
 
-  const handleExecuteQuery = async (query: GeneratedApiCall) => {
+  const handleExecuteQuery = async (query: GeneratedApiCall, naturalLanguageQuery?: string) => {
     setLoading(true);
     setResponse(null);
     const toastId = toast.loading('Executing API request...');
@@ -101,6 +152,11 @@ function AppContent() {
         payload: { query }
       });
       setResponse(result);
+      
+      // Save query to history if provided
+      if (naturalLanguageQuery && query) {
+        await dataSync.saveQuery(naturalLanguageQuery, query, result, user?.id);
+      }
       
       if (result.success) {
         toast.success('Request successful', {
@@ -241,7 +297,8 @@ function AppContent() {
                 {generatedQuery && (
                   <ApiPreview
                     query={generatedQuery}
-                    onExecute={handleExecuteQuery}
+                    onExecute={(query) => handleExecuteQuery(query, (generatedQuery as any).naturalLanguageQuery)}
+                    onCreateJob={handleCreateJob}
                     loading={loading}
                   />
                 )}
@@ -253,8 +310,16 @@ function AppContent() {
         )}
 
         {activeTab === 'jobs' && (
-          <div className="p-4">
-            <JobScheduler />
+          <div>
+            {showCreateJob && jobQuery ? (
+              <CreateJobForm
+                initialQuery={jobQuery}
+                onCancel={handleJobCancelled}
+                onSuccess={handleJobCreated}
+              />
+            ) : (
+              <JobScheduler />
+            )}
           </div>
         )}
 
@@ -395,7 +460,7 @@ function AppContent() {
               </button>
             </div>
 
-            <div className="pt-4 border-t border-border">
+            {/* <div className="pt-4 border-t border-border">
               <h3 className="text-sm font-medium mb-2">About</h3>
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>API Documentation Query Builder v1.0.0</p>
@@ -404,7 +469,7 @@ function AppContent() {
                   Configuration is handled through environment variables during development.
                 </p>
               </div>
-            </div>
+            </div> */}
           </div>
         )}
       </div>

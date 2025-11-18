@@ -5,7 +5,7 @@ import { convertNaturalLanguageToApi, validateApiCall, getQuerySuggestions } fro
 
 interface Props {
   schema: ApiSchema | null;
-  onQueryGenerated: (query: GeneratedApiCall) => void;
+  onQueryGenerated: (query: GeneratedApiCall, naturalLanguageQuery?: string) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
 }
@@ -55,7 +55,7 @@ export default function QueryInput({ schema, onQueryGenerated, loading, setLoadi
         setError('Generated query may not match the API schema. Please review before executing.');
       }
       
-      onQueryGenerated(generatedQuery);
+      onQueryGenerated(generatedQuery, query.trim());
       setQuery(''); // Clear input after successful generation
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate query');

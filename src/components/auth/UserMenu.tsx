@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { LogOut, Settings, ChevronDown } from 'lucide-react';
+import { DataSyncService } from '../../lib/dataSync';
 
 export default function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,10 @@ export default function UserMenu() {
     const toastId = toast.loading('Signing out...');
     
     try {
+      // Clear local data on sign out
+      const dataSync = DataSyncService.getInstance();
+      await dataSync.clearLocalData();
+      
       const { error } = await signOut();
       
       if (error) {
@@ -22,6 +27,7 @@ export default function UserMenu() {
       } else {
         toast.success('Signed out successfully', {
           id: toastId,
+          description: 'Local data cleared',
         });
       }
     } catch (error) {

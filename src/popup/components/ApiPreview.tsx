@@ -1,16 +1,19 @@
-import { Play, Copy, Edit } from 'lucide-react';
+import { Play, Copy, Edit, Calendar } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import type { GeneratedApiCall } from '../../types';
 
 interface Props {
   query: GeneratedApiCall;
   onExecute: (query: GeneratedApiCall) => void;
   loading: boolean;
+  onCreateJob?: (query: GeneratedApiCall) => void;
 }
 
-export default function ApiPreview({ query, onExecute, loading }: Props) {
+export default function ApiPreview({ query, onExecute, loading, onCreateJob }: Props) {
   const [editing, setEditing] = useState(false);
   const [editedQuery] = useState(query);
+  const { user } = useAuth();
 
   const handleCopy = () => {
     const code = `fetch('${query.endpoint}', {
@@ -26,11 +29,26 @@ export default function ApiPreview({ query, onExecute, loading }: Props) {
     onExecute(editing ? editedQuery : query);
   };
 
+  const handleCreateJob = () => {
+    if (onCreateJob) {
+      onCreateJob(editing ? editedQuery : query);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Generated API Call</h3>
         <div className="flex gap-2">
+          {user && onCreateJob && (
+            <button
+              onClick={handleCreateJob}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              title="Schedule as job"
+            >
+              <Calendar className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => setEditing(!editing)}
             className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
