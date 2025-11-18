@@ -97,3 +97,65 @@ export interface EmailCapture {
   source: 'hero' | 'cta' | 'signup'
   created_at?: string
 }
+
+// Chrome Extension Types (for API documentation parsing)
+export interface ExtensionApiEndpoint {
+  path: string
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  description?: string
+  parameters?: ExtensionApiParameter[]
+  requestBody?: ExtensionApiRequestBody
+  responses?: Record<string, ExtensionApiResponse>
+  authentication?: ExtensionAuthMethod[]
+}
+
+export interface ExtensionApiParameter {
+  name: string
+  in: 'query' | 'path' | 'header' | 'cookie'
+  required?: boolean
+  schema: {
+    type: string
+    format?: string
+    enum?: string[]
+    default?: any
+  }
+  description?: string
+}
+
+export interface ExtensionApiRequestBody {
+  required?: boolean
+  content: Record<string, {
+    schema: any
+    example?: any
+  }>
+}
+
+export interface ExtensionApiResponse {
+  description?: string
+  content?: Record<string, {
+    schema: any
+    example?: any
+  }>
+}
+
+export type ExtensionAuthMethod = 
+  | { type: 'apiKey'; name: string; in: 'header' | 'query' }
+  | { type: 'bearer'; scheme?: string }
+  | { type: 'oauth2'; flows: any }
+  | { type: 'basic' }
+
+export interface ExtensionApiSchema {
+  id: string
+  url: string
+  title: string
+  version?: string
+  baseUrl?: string
+  endpoints: ExtensionApiEndpoint[]
+  authMethods?: ExtensionAuthMethod[]
+  parsedAt: string
+}
+
+export interface ParsedDocumentation {
+  type: 'openapi' | 'swagger' | 'graphql' | 'rest'
+  schema: ExtensionApiSchema
+}

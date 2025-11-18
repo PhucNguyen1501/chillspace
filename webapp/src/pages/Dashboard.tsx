@@ -2,12 +2,14 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useEffect, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import { Zap, FileText, Calendar, BarChart3, Plus, Database, Search, Pause, Play, Square, MessageSquare } from 'lucide-react'
+import { Zap, FileText, Calendar, BarChart3, Plus, Database, Search, Pause, Play, Square, MessageSquare, Download } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ApiConnection } from '@/types/database'
 import ConnectionModal from '@/components/modals/ConnectionModal'
 import QueryBuilderModal from '@/components/modals/QueryBuilderModal'
+import EnhancedConnectionModal from '@/components/modals/EnhancedConnectionModal'
 import UserProfileDropdown from '@/components/user/UserProfileDropdown'
+import { extensionService } from '@/services/ExtensionService'
 
 export default function Dashboard() {
   const { profile, user } = useAuth()
@@ -19,12 +21,24 @@ export default function Dashboard() {
   // Modal states
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false)
   const [isQueryBuilderModalOpen, setIsQueryBuilderModalOpen] = useState(false)
+  const [isEnhancedConnectionModalOpen, setIsEnhancedConnectionModalOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<ApiConnection | null>(null)
   const [selectedConnectionForQuery, setSelectedConnectionForQuery] = useState<ApiConnection | null>(null)
+  const [unprocessedDocCount, setUnprocessedDocCount] = useState(0)
 
   useEffect(() => {
     if (user) {
       loadConnections()
+      // Start polling for parsed documentation
+      const checkUnprocessedDocs = async () => {
+        const count = await extensionService.getUnprocessedCount()
+        setUnprocessedDocCount(count)
+      }
+      
+      checkUnprocessedDocs()
+      const interval = setInterval(checkUnprocessedDocs, 3000)
+      
+      return () => clearInterval(interval)
     }
   }, [user])
 
@@ -170,14 +184,32 @@ export default function Dashboard() {
         <Card>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">API Connections</h2>
-            <Button 
-              variant="primary" 
-              size="sm"
+            <div className="flex gap-3">
+              {unprocessedDocCount > 0 && (
+                <Button 
+                  variant="secondary" 
+                  size="sm"
+                  onClick={() => setIsEnhancedConnectionModalOpen(true)}
+                  className="relative"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Import from Extension
+                  {unprocessedDocCount > 0 && (
+                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-primary-600 text-white text-xs rounded-full flex items-center justify-center">
+                      {unprocessedDocCount}
+                    </span>
+                  )}
+                </Button>
+              )}
+              <Button 
+                variant="primary" 
+                size="sm"
               onClick={() => openConnectionModal()}
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Connection
             </Button>
+            </div>
           </div>
 
           {/* Search and Filters */}
@@ -302,20 +334,26 @@ export default function Dashboard() {
 
           </Card>
 
-        {/* Modals */}
-        <ConnectionModal
-          isOpen={isConnectionModalOpen}
-          onClose={closeConnectionModal}
-          connection={editingConnection}
-          onSuccess={onConnectionSuccess}
-        />
+          {/* Modals */}
+          <ConnectionModal
+            isOpen={isConnectionModalOpen}
+            onClose={closeConnectionModal}
+            connection={editingConnection}
+            onSuccess={onConnectionSuccess}
+          />
 
-        <QueryBuilderModal
-          isOpen={isQueryBuilderModalOpen}
-          onClose={closeQueryBuilderModal}
-          connection={selectedConnectionForQuery}
-        />
+          <QueryBuilderModal
+            isOpen={isQueryBuilderModalOpen}
+            onClose={closeQueryBuilderModal}
+            connection={selectedConnectionForQuery}
+          />
+
+          <EnhancedConnectionModal
+            isOpen={isEnhancedConnectionModalOpen}
+            onClose={() => setIsEnhancedConnectionModalOpen(false)}
+            onSuccess={onConnectionSuccess}
+          />
+        </div>
       </div>
-    </div>
-  )
+    )
 }
