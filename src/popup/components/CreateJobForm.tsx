@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { JobService } from '../../lib/jobService';
+import { validateCronExpression, validateUrl, validateEmail, validateRequired, validateInterval } from '../../lib/validation';
 import type { GeneratedApiCall } from '../../types';
 
 interface Props {
@@ -36,20 +37,49 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
     
     if (!user) return;
 
-    // Validate form
+    // Validate form with enhanced validation
+    const validationErrors: string[] = [];
+    
     if (!initialQuery) {
-      setErrors(['API query is required']);
-      return;
+      validationErrors.push('API query is required');
     }
 
-    const jobToValidate = {
-      ...formData,
-      query: initialQuery,
-    };
+    // Validate name
+    const nameValidation = validateRequired(formData.name, 'Job name');
+    if (!nameValidation.isValid) {
+      validationErrors.push(...nameValidation.errors);
+    }
 
-    const validation = jobService.validateJob(jobToValidate);
-    if (!validation.isValid) {
-      setErrors(validation.errors);
+    // Validate schedule
+    if (formData.schedule.type === 'cron') {
+      const cronValidation = validateCronExpression(formData.schedule.value);
+      if (!cronValidation.isValid) {
+        validationErrors.push(...cronValidation.errors);
+      }
+    } else if (formData.schedule.type === 'interval') {
+      const intervalValidation = validateInterval(formData.schedule.value);
+      if (!intervalValidation.isValid) {
+        validationErrors.push(...intervalValidation.errors);
+      }
+    }
+
+    // Validate destination
+    if (formData.destination.type === 'webhook') {
+      const webhookUrl = (formData.destination.config as any)?.url || '';
+      const urlValidation = validateUrl(webhookUrl);
+      if (!urlValidation.isValid) {
+        validationErrors.push('Webhook: ' + urlValidation.errors.join(', '));
+      }
+    } else if (formData.destination.type === 'email') {
+      const emailAddress = (formData.destination.config as any)?.email || '';
+      const emailValidation = validateEmail(emailAddress);
+      if (!emailValidation.isValid) {
+        validationErrors.push('Email: ' + emailValidation.errors.join(', '));
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors);
       return;
     }
 
@@ -57,6 +87,10 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
     setErrors([]);
 
     try {
+      if (!initialQuery) {
+        throw new Error('API query is required');
+      }
+      
       await jobService.createJob({
         ...formData,
         query: initialQuery,
@@ -109,7 +143,7 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
         </p>
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-90 transition-opacity"
+          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
         >
           Go Back
         </button>
@@ -119,6 +153,23 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Errors */}
+      {errors.length > 0 && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-red-900 mb-1">Please fix the following errors:</h4>
+              <ul className="text-sm text-red-800 space-y-1">
+                {errors.map((error, idx) => (
+                  <li key={idx}>• {error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-border">
         <button
@@ -152,7 +203,7 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
           type="text"
           value={formData.name}
           onChange={(e) => handleInputChange('name', e.target.value)}
-          className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
           placeholder="e.g., Daily User Sync"
           disabled={loading}
         />
@@ -194,7 +245,7 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
             <select
               value={formData.schedule.value}
               onChange={(e) => handleScheduleChange('value', e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
               disabled={loading}
             >
               <option value="5m">Every 5 minutes</option>
@@ -211,7 +262,7 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
               type="text"
               value={formData.schedule.value}
               onChange={(e) => handleScheduleChange('value', e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
               placeholder="0 */6 * * *"
               disabled={loading}
             />
@@ -227,7 +278,7 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
         <select
           value={formData.output_format}
           onChange={(e) => handleInputChange('output_format', e.target.value)}
-          className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
           disabled={loading}
         >
           <option value="json">JSON</option>
@@ -249,34 +300,66 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
               onClick={() => handleDestinationChange('type', 'download')}
               className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
                 formData.destination.type === 'download'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background border-border hover:bg-accent'
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
             >
               Download
             </button>
             <button
               type="button"
+              onClick={() => handleDestinationChange('type', 'email')}
+              className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
+                formData.destination.type === 'email'
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Email
+            </button>
+            <button
+              type="button"
               onClick={() => handleDestinationChange('type', 'webhook')}
               className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
                 formData.destination.type === 'webhook'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background border-border hover:bg-accent'
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
             >
               Webhook
             </button>
           </div>
 
+          {formData.destination.type === 'email' && (
+            <div>
+              <input
+                type="email"
+                value={(formData.destination.config as any)?.email || ''}
+                onChange={(e) => handleDestinationChange('config', { ...formData.destination.config, email: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
+                placeholder="recipient@example.com"
+                disabled={loading}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Job results will be emailed to this address
+              </p>
+            </div>
+          )}
+          
           {formData.destination.type === 'webhook' && (
-            <input
-              type="url"
-              value={(formData.destination.config as any)?.url || ''}
-              onChange={(e) => handleDestinationChange('config', { ...formData.destination.config, url: e.target.value })}
-              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="https://your-webhook-url.com"
-              disabled={loading}
-            />
+            <div>
+              <input
+                type="url"
+                value={(formData.destination.config as any)?.url || ''}
+                onChange={(e) => handleDestinationChange('config', { ...formData.destination.config, url: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
+                placeholder="https://your-webhook-url.com"
+                disabled={loading}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Results will be sent via HTTP POST
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -317,14 +400,14 @@ export default function CreateJobForm({ onCancel, onSuccess, initialQuery }: Pro
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-90 transition-opacity"
+          className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
           disabled={loading}
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-md transition-colors disabled:opacity-50"
           disabled={loading}
         >
           {loading ? (

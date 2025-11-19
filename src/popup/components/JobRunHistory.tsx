@@ -37,21 +37,17 @@ export default function JobRunHistory({ job, onBack }: Props): JSX.Element {
     }
   };
 
-  const handleExport = async (format: 'json' | 'csv') => {
+  const handleExport = async (format: 'json' | 'csv' | 'xlsx') => {
     if (!user || !job.id) return;
 
     setExporting(true);
     try {
-      const data = await jobService.exportJobRuns(job.id, format);
-      
-      // Create download
-      const blob = new Blob([data], { 
-        type: format === 'json' ? 'application/json' : 'text/csv' 
-      });
+      const blob = await jobService.exportJobRuns(job.id, format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${job.name}-runs.${format}`;
+      const extension = format === 'xlsx' ? 'xlsx' : format;
+      a.download = `${job.name}-runs.${extension}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -144,16 +140,23 @@ export default function JobRunHistory({ job, onBack }: Props): JSX.Element {
               <button
                 onClick={() => handleExport('json')}
                 disabled={exporting}
-                className="px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md disabled:opacity-50 transition-colors"
               >
                 JSON
               </button>
               <button
                 onClick={() => handleExport('csv')}
                 disabled={exporting}
-                className="px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md disabled:opacity-50 transition-colors"
               >
                 CSV
+              </button>
+              <button
+                onClick={() => handleExport('xlsx')}
+                disabled={exporting}
+                className="px-2 py-1 text-xs bg-accent-600 hover:bg-accent-700 text-white rounded-md disabled:opacity-50 transition-colors"
+              >
+                Excel
               </button>
             </div>
           )}

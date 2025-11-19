@@ -53,7 +53,7 @@ export default function UserMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/50 transition-colors"
       >
-        <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-medium">
+        <div className="w-6 h-6 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-medium">
           {getUserInitial()}
         </div>
         <span className="text-sm truncate max-w-[120px]">{getUserEmail()}</span>
@@ -86,7 +86,7 @@ export default function UserMenu() {
               
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-accent/50 transition-colors text-destructive"
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-red-50 transition-colors text-red-600"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out

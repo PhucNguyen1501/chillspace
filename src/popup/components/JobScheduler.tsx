@@ -118,8 +118,8 @@ export default function JobScheduler(): JSX.Element {
   if (!user) {
     return (
       <div className="text-center py-12">
-        <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-        <p className="text-sm text-muted-foreground mb-4">
+        <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+        <p className="text-sm text-gray-600 mb-4">
           Sign in to create and manage scheduled jobs
         </p>
       </div>
@@ -143,31 +143,31 @@ export default function JobScheduler(): JSX.Element {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 bg-background border border-border rounded-md">
+        <div className="p-4 bg-white border border-gray-200 rounded-md">
           <div className="flex items-center gap-2 mb-2">
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">Total Jobs</span>
+            <BarChart3 className="w-4 h-4 text-primary-600" />
+            <span className="text-sm font-medium text-gray-900">Total Jobs</span>
           </div>
-          <p className="text-2xl font-bold">{stats.total}</p>
-          <p className="text-xs text-muted-foreground">{stats.active} active</p>
+          <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-xs text-gray-600">{stats.active} active</p>
         </div>
         
-        <div className="p-4 bg-background border border-border rounded-md">
+        <div className="p-4 bg-white border border-gray-200 rounded-md">
           <div className="flex items-center gap-2 mb-2">
-            <History className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">Executions</span>
+            <History className="w-4 h-4 text-primary-600" />
+            <span className="text-sm font-medium text-gray-900">Executions</span>
           </div>
           <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
-          <p className="text-xs text-destructive">{stats.failed} failed</p>
+          <p className="text-xs text-red-600">{stats.failed} failed</p>
         </div>
       </div>
 
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Scheduled Jobs</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Scheduled Jobs</h2>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground text-sm rounded-md hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium rounded-md transition-colors"
         >
           <Plus className="w-4 h-4" />
           Create Job
@@ -177,18 +177,18 @@ export default function JobScheduler(): JSX.Element {
       {/* Jobs List */}
       {loading ? (
         <div className="text-center py-8">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Loading jobs...</p>
+          <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm text-gray-600">Loading jobs...</p>
         </div>
       ) : jobs.length === 0 ? (
         <div className="text-center py-12">
-          <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground mb-4">
+          <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <p className="text-sm text-gray-600 mb-4">
             No jobs scheduled yet
           </p>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity"
+            className="px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-md transition-colors"
           >
             Create Your First Job
           </button>

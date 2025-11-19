@@ -1,4 +1,5 @@
 import type { MessageType, MessageResponse, Job, GeneratedApiCall, AuthConfig } from '../types';
+import { ApiKeysService } from '../lib/apiKeys';
 
 console.log('Background service worker loaded');
 
@@ -109,7 +110,12 @@ async function handleExecuteQuery(query: GeneratedApiCall, auth?: AuthConfig): P
   try {
     const headers: HeadersInit = { ...query.headers };
     
-    // Add authentication
+    // Auto-inject API keys from storage
+    const apiKeysService = ApiKeysService.getInstance();
+    const autoAuthHeaders = await apiKeysService.getAuthHeaders(query.endpoint);
+    Object.assign(headers, autoAuthHeaders);
+    
+    // Add manual authentication (if provided)
     if (auth) {
       if (auth.method.type === 'apiKey') {
         const { name, in: location } = auth.method;

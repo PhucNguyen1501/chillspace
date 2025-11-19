@@ -15,35 +15,62 @@ export default function ApiPreview({ query, onExecute, loading, onCreateJob }: P
   const [editedQuery] = useState(query);
   const { user } = useAuth();
 
+  // Heuristic: treat POST requests to a /graphql-style endpoint as GraphQL
+  const isGraphQL =
+    (editing ? editedQuery.method : query.method).toUpperCase() === 'POST' &&
+    /graphql/i.test(editing ? editedQuery.endpoint : query.endpoint);
+
+  const effectiveQuery = editing ? editedQuery : query;
+
+  const graphqlSampleBody = {
+    query:
+      typeof effectiveQuery.body?.query === 'string'
+        ? effectiveQuery.body.query
+        : 'query ExampleQuery {\n  # Replace with your fields\n}',
+    variables: effectiveQuery.body?.variables ?? {},
+  };
+
   const handleCopy = () => {
-    const code = `fetch('${query.endpoint}', {
-  method: '${query.method}',
-  headers: ${JSON.stringify(query.headers, null, 2)}${
-    query.body ? `,\n  body: ${JSON.stringify(query.body, null, 2)}` : ''
+    const baseHeaders = effectiveQuery.headers || {};
+    const headers = isGraphQL
+      ? {
+          'Content-Type': 'application/json',
+          ...baseHeaders,
+        }
+      : baseHeaders;
+
+    const bodyForCopy = isGraphQL
+      ? graphqlSampleBody
+      : effectiveQuery.body;
+
+    const code = `fetch('${effectiveQuery.endpoint}', {
+  method: '${effectiveQuery.method}',
+  headers: ${JSON.stringify(headers, null, 2)}${
+    bodyForCopy ? `,\n  body: ${JSON.stringify(bodyForCopy, null, 2)}` : ''
   }
 })`;
     navigator.clipboard.writeText(code);
   };
 
   const handleExecute = () => {
-    onExecute(editing ? editedQuery : query);
+    onExecute(effectiveQuery);
   };
 
   const handleCreateJob = () => {
     if (onCreateJob) {
-      onCreateJob(editing ? editedQuery : query);
+      onCreateJob(effectiveQuery);
     }
   };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Generated API Call</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Generated API Call</h3>
         <div className="flex gap-2">
           {user && onCreateJob && (
             <button
               onClick={handleCreateJob}
-              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1.5 text-gray-600 hover:text-primary-600 transition-colors"
               title="Schedule as job"
             >
               <Calendar className="w-4 h-4" />
@@ -51,13 +78,13 @@ export default function ApiPreview({ query, onExecute, loading, onCreateJob }: P
           )}
           <button
             onClick={() => setEditing(!editing)}
-            className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 text-gray-600 hover:text-primary-600 transition-colors"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
             onClick={handleCopy}
-            className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 text-gray-600 hover:text-primary-600 transition-colors"
           >
             <Copy className="w-4 h-4" />
           </button>
@@ -65,38 +92,45 @@ export default function ApiPreview({ query, onExecute, loading, onCreateJob }: P
       </div>
 
       {query.description && (
-        <p className="text-xs text-muted-foreground">{query.description}</p>
+        <p className="text-xs text-gray-600">{query.description}</p>
       )}
 
-      <div className="bg-accent/30 rounded-md p-3 space-y-2 text-sm font-mono">
+      <div className="bg-primary-50 rounded-md p-3 space-y-2 text-sm font-mono">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-primary">{query.method}</span>
-          <span className="text-foreground">{query.endpoint}</span>
+          <span className="font-semibold text-primary-600">{effectiveQuery.method}</span>
+          <span className="text-gray-900">{effectiveQuery.endpoint}</span>
+          {isGraphQL && (
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full bg-purple-100 text-purple-700">
+              GraphQL
+            </span>
+          )}
         </div>
 
-        {Object.keys(query.headers).length > 0 && (
+        {Object.keys(effectiveQuery.headers || {}).length > 0 && (
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Headers:</p>
+            <p className="text-xs text-gray-600 mb-1">Headers:</p>
             <pre className="text-xs overflow-x-auto">
-              {JSON.stringify(query.headers, null, 2)}
+              {JSON.stringify(effectiveQuery.headers, null, 2)}
             </pre>
           </div>
         )}
 
-        {query.queryParams && Object.keys(query.queryParams).length > 0 && (
+        {effectiveQuery.queryParams && Object.keys(effectiveQuery.queryParams).length > 0 && (
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Query Params:</p>
+            <p className="text-xs text-gray-600 mb-1">Query Params:</p>
             <pre className="text-xs overflow-x-auto">
-              {JSON.stringify(query.queryParams, null, 2)}
+              {JSON.stringify(effectiveQuery.queryParams, null, 2)}
             </pre>
           </div>
         )}
 
-        {query.body && (
+        {(effectiveQuery.body || isGraphQL) && (
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Body:</p>
+            <p className="text-xs text-gray-600 mb-1">
+              {isGraphQL ? 'GraphQL Body (query & variables):' : 'Body:'}
+            </p>
             <pre className="text-xs overflow-x-auto">
-              {JSON.stringify(query.body, null, 2)}
+              {JSON.stringify(isGraphQL ? graphqlSampleBody : effectiveQuery.body, null, 2)}
             </pre>
           </div>
         )}
@@ -105,7 +139,7 @@ export default function ApiPreview({ query, onExecute, loading, onCreateJob }: P
       <button
         onClick={handleExecute}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+        className="flex items-center gap-2 px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium rounded-md transition-colors"
       >
         <Play className="w-4 h-4" />
         {loading ? 'Executing...' : 'Execute Query'}

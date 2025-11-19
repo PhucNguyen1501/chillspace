@@ -149,8 +149,9 @@ serve(async (req: Request) => {
         outputUrl = await generateDownloadUrl(processedData, job.output_format);
       } else if (job.destination.type === 'webhook') {
         await sendToWebhook(job.destination.config.url, processedData);
+      } else if (job.destination.type === 'email') {
+        await sendEmail(job.destination.config.email, job.name, processedData, job.output_format);
       }
-      // TODO: Implement email destination
 
       // Update job run as completed
       const { error: updateError } = await supabase
@@ -327,5 +328,83 @@ async function sendToWebhook(url: string, data: any): Promise<void> {
   } catch (error) {
     console.error('Failed to send webhook:', error);
     // Don't throw here - webhook failure shouldn't fail the job
+  }
+}
+
+async function sendEmail(to: string, jobName: string, data: any, format: string): Promise<void> {
+  try {
+    // @ts-ignore - Deno env
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    
+    if (!resendApiKey) {
+      console.warn('RESEND_API_KEY not configured - skipping email');
+      return;
+    }
+
+    const resultCount = data.data?.length || 0;
+    const timestamp = new Date().toISOString();
+    
+    // Format data preview (first 5 items)
+    const preview = data.data.slice(0, 5).map((item: any, idx: number) => 
+      `${idx + 1}. ${JSON.stringify(item, null, 2)}`
+    ).join('\n\n');
+
+    const emailBody = `
+Job Execution Results
+
+Job Name: ${jobName}
+Completed: ${timestamp}
+Results Count: ${resultCount}
+Format: ${format}
+
+--- Data Preview ---
+${preview}
+${resultCount > 5 ? `\n... and ${resultCount - 5} more items` : ''}
+
+--- Full Data ---
+See attached data or access via your dashboard.
+    `.trim();
+
+    // Send email via Resend
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'ChillSpace Jobs <jobs@chillspace.app>',
+        to: [to],
+        subject: `Job Results: ${jobName} (${resultCount} results)`,
+        text: emailBody,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #0284c7;">Job Execution Results</h2>
+            <div style="background: #f0f9ff; padding: 16px; border-radius: 8px; margin: 16px 0;">
+              <p><strong>Job Name:</strong> ${jobName}</p>
+              <p><strong>Completed:</strong> ${timestamp}</p>
+              <p><strong>Results Count:</strong> ${resultCount}</p>
+              <p><strong>Format:</strong> ${format}</p>
+            </div>
+            <h3>Data Preview</h3>
+            <pre style="background: #f9fafb; padding: 12px; border-radius: 4px; overflow-x: auto;">${preview}</pre>
+            ${resultCount > 5 ? `<p style="color: #6b7280;">... and ${resultCount - 5} more items</p>` : ''}
+            <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
+              Access the full data in your ChillSpace dashboard.
+            </p>
+          </div>
+        `,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`Email delivery failed: ${response.status}`, errorData);
+    } else {
+      console.log(`Email sent successfully to ${to}`);
+    }
+  } catch (error) {
+    console.error('Failed to send email:', error);
+    // Don't throw here - email failure shouldn't fail the job
   }
 }

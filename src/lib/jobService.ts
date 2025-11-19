@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 import type { GeneratedApiCall } from '../types';
 
 export interface Job {
@@ -288,13 +289,16 @@ export class JobService {
   /**
    * Export job runs data
    */
-  async exportJobRuns(jobId: string, format: 'json' | 'csv'): Promise<string> {
+  async exportJobRuns(jobId: string, format: 'json' | 'csv' | 'xlsx'): Promise<Blob> {
     try {
       const runs = await this.getJobRuns(jobId);
-      
+
       if (format === 'json') {
-        return JSON.stringify(runs, null, 2);
-      } else if (format === 'csv') {
+        const jsonString = JSON.stringify(runs, null, 2);
+        return new Blob([jsonString], { type: 'application/json' });
+      }
+
+      if (format === 'csv') {
         const headers = ['ID', 'Status', 'Started At', 'Completed At', 'Result Count', 'Error'];
         const rows = runs.map(run => [
           run.id || '',
@@ -304,10 +308,28 @@ export class JobService {
           run.result_count?.toString() || '',
           run.error || '',
         ]);
-        
-        return [headers, ...rows].map(row => row.join(',')).join('\n');
+
+        const csvString = [headers, ...rows].map(row => row.join(',')).join('\n');
+        return new Blob([csvString], { type: 'text/csv' });
       }
-      
+
+      if (format === 'xlsx') {
+        const worksheetData = runs.map(run => ({
+          ID: run.id || '',
+          Status: run.status,
+          'Started At': run.started_at,
+          'Completed At': run.completed_at || '',
+          'Result Count': run.result_count ?? '',
+          Error: run.error || '',
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Job Runs');
+        const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        return new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      }
+
       throw new Error('Unsupported export format');
     } catch (error) {
       console.error('Error exporting job runs:', error);

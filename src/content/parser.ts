@@ -1,4 +1,5 @@
 import type { ApiSchema, ParsedDocumentation, ApiEndpoint } from '../types';
+import { generateId } from '../lib/id';
 import * as yaml from 'js-yaml';
 
 export async function parseApiDocumentation(
@@ -217,30 +218,114 @@ async function parseRedoc(
   return null;
 }
 
-// Parse GraphQL introspection
+// Parse GraphQL API documentation / consoles (GraphiQL, Playground, etc.)
 async function parseGraphQL(
   document: Document,
   url: string
 ): Promise<ParsedDocumentation | null> {
-  // Look for GraphQL playground or GraphiQL
+  // Detect common GraphQL UIs
   const graphqlIndicators = [
     document.querySelector('.graphiql-container'),
-    document.querySelector('[class*="graphql"]'),
+    document.querySelector('[data-testid="playground"]'),
+    document.querySelector('[class*="graphql-playground"]'),
+    document.querySelector('[class*="graphiql"]'),
   ];
 
-  if (!graphqlIndicators.some(el => el !== null)) return null;
+  const hasGraphQLUI = graphqlIndicators.some(el => el !== null);
 
-  // This is a placeholder - full GraphQL parsing would require introspection query
+  // Fallback: look for GraphQL in title or main headings
+  const titleText = (document.title || '').toLowerCase();
+  const headingText = Array.from(document.querySelectorAll('h1, h2'))
+    .map(h => h.textContent?.toLowerCase() || '')
+    .join(' ');
+
+  const mentionsGraphQL = titleText.includes('graphql') || headingText.includes('graphql');
+
+  if (!hasGraphQLUI && !mentionsGraphQL) {
+    return null;
+  }
+
+  // Try to infer the GraphQL endpoint URL
+  const endpointUrl = findGraphQLEndpoint(document, url);
+
+  // Derive base URL + path for our ApiSchema
+  const pageUrl = new URL(url);
+  const endpoint = endpointUrl ? new URL(endpointUrl, url) : new URL('/graphql', pageUrl.origin);
+
+  const schema = {
+    id: generateId(),
+    url,
+    title: document.title || 'GraphQL API',
+    baseUrl: endpoint.origin,
+    endpoints: [
+      {
+        path: endpoint.pathname,
+        method: 'POST',
+        description:
+          'GraphQL endpoint. Send queries and mutations as a JSON body with a `query` field (and optional `variables`).',
+      },
+    ],
+    parsedAt: new Date().toISOString(),
+  } satisfies ApiSchema;
+
   return {
     type: 'graphql',
-    schema: {
-      id: `graphql-${Date.now()}`,
-      url,
-      title: 'GraphQL API',
-      endpoints: [],
-      parsedAt: new Date().toISOString(),
-    },
+    schema,
   };
+}
+
+// Best-effort detection of the GraphQL HTTP endpoint from the documentation page
+function findGraphQLEndpoint(document: Document, pageUrl: string): string | null {
+  // 1) Explicit meta tags
+  const meta = document.querySelector(
+    'meta[name="graphql-endpoint"], meta[name="graphql-url"], meta[name="graphql"]'
+  );
+  if (meta) {
+    const content = meta.getAttribute('content');
+    if (content) return content;
+  }
+
+  // 2) Link tags
+  const link = document.querySelector(
+    'link[rel="graphql"], link[rel="graphql-endpoint"], link[rel="api"]'
+  );
+  if (link) {
+    const href = link.getAttribute('href');
+    if (href) return href;
+  }
+
+  // 3) Elements with data attributes commonly used to store endpoint
+  const endpointAttrEl = document.querySelector(
+    '[data-endpoint], [data-url], [data-graphql-endpoint], [data-graphql-url]'
+  );
+  if (endpointAttrEl) {
+    const attrNames = ['data-endpoint', 'data-url', 'data-graphql-endpoint', 'data-graphql-url'];
+    for (const name of attrNames) {
+      const value = endpointAttrEl.getAttribute(name);
+      if (value) return value;
+    }
+  }
+
+  // 4) Forms or buttons that hint at the endpoint
+  const form = document.querySelector('form[action*="graphql"]') as HTMLFormElement | null;
+  if (form?.action) {
+    return form.action;
+  }
+
+  // 5) Fallback to common GraphQL paths on the same origin
+  try {
+    const base = new URL(pageUrl);
+    // Prefer common GraphQL endpoints, without doing network requests here
+    const commonPaths = ['/graphql', '/api/graphql', '/v1/graphql'];
+    for (const path of commonPaths) {
+      // Return the first plausible endpoint; user can adjust if needed
+      return new URL(path, base.origin).href;
+    }
+  } catch {
+    // Ignore URL parsing errors and fall through
+  }
+
+  return null;
 }
 
 // Parse REST API documentation tables
@@ -281,7 +366,7 @@ async function parseRestApiTable(
     return {
       type: 'rest',
       schema: {
-        id: `rest-${Date.now()}`,
+        id: generateId(),
         url,
         title: document.title || 'REST API',
         endpoints,
@@ -321,7 +406,7 @@ function convertOpenApiToSchema(spec: any, url: string): ApiSchema {
     console.error('Error converting OpenAPI spec:', error);
     // Return a minimal schema if conversion fails
     return {
-      id: `openapi-${Date.now()}`,
+      id: generateId(),
       url,
       title: spec.info?.title || 'API Documentation',
       version: spec.info?.version || '1.0.0',
@@ -332,7 +417,7 @@ function convertOpenApiToSchema(spec: any, url: string): ApiSchema {
   }
 
   return {
-    id: `openapi-${Date.now()}`,
+    id: generateId(),
     url,
     title: spec.info?.title || 'API Documentation',
     version: spec.info?.version || '1.0.0',
