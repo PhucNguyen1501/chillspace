@@ -1,33 +1,97 @@
 import { useState, useEffect } from 'react';
-import { Database, Search, Calendar, Settings } from 'lucide-react';
+import { Database, Search, Calendar, Settings, LogIn } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import QueryInput from './components/QueryInput';
 import ApiPreview from './components/ApiPreview';
 import JobScheduler from './components/JobScheduler';
 import ResponseViewer from './components/ResponseViewer';
+import AuthModal from '../components/auth/AuthModal';
+import UserMenu from '../components/auth/UserMenu';
+import CreateJobForm from './components/CreateJobForm';
+import ApiKeysManager from './components/ApiKeysManager';
+import { DataSyncService } from '../lib/dataSync';
 import type { ApiSchema, GeneratedApiCall } from '../types';
 
 type Tab = 'query' | 'jobs' | 'schemas' | 'settings';
 
-function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('query');
   const [schemas, setSchemas] = useState<ApiSchema[]>([]);
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
   const [generatedQuery, setGeneratedQuery] = useState<GeneratedApiCall | null>(null);
   const [response, setResponse] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [showCreateJob, setShowCreateJob] = useState(false);
+  const [jobQuery, setJobQuery] = useState<GeneratedApiCall | null>(null);
+  
+  const { user, loading: authLoading } = useAuth();
+  const dataSync = DataSyncService.getInstance();
 
   useEffect(() => {
-    // Load schemas from storage
-    chrome.storage.local.get(['schemas'], (result) => {
-      if (result.schemas) {
-        setSchemas(result.schemas);
-        if (result.schemas.length > 0 && !selectedSchema) {
-          setSelectedSchema(result.schemas[0].id);
+    // Load schemas from Supabase or local storage
+    const loadSchemas = async () => {
+      try {
+        const schemas = await dataSync.loadSchemas(user?.id);
+        setSchemas(schemas);
+        if (schemas.length > 0 && !selectedSchema) {
+          setSelectedSchema(schemas[0].id);
         }
+      } catch (error) {
+        console.error('Error loading schemas:', error);
       }
-    });
-  }, []);
+    };
+
+    loadSchemas();
+  }, [user?.id]);
+
+  // Sync local data when user signs in
+  useEffect(() => {
+    if (user && !authLoading) {
+      dataSync.syncLocalToSupabase(user.id);
+    }
+  }, [user, authLoading]);
+
+  const handleSignIn = () => {
+    setAuthMode('login');
+    setAuthModalOpen(true);
+  };
+
+  const handleSignUp = () => {
+    setAuthMode('signup');
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthModalClose = () => {
+    setAuthModalOpen(false);
+  };
+
+  const handleCreateJob = (query: GeneratedApiCall) => {
+    if (!user) {
+      // Show sign in modal if not authenticated
+      setAuthMode('login');
+      setAuthModalOpen(true);
+      return;
+    }
+    
+    setJobQuery(query);
+    setShowCreateJob(true);
+    setActiveTab('jobs');
+  };
+
+  const handleJobCreated = () => {
+    setShowCreateJob(false);
+    setJobQuery(null);
+    // Refresh the jobs tab
+    setActiveTab('jobs');
+  };
+
+  const handleJobCancelled = () => {
+    setShowCreateJob(false);
+    setJobQuery(null);
+  };
 
   const handleParseCurrentPage = async () => {
     setLoading(true);
@@ -39,14 +103,19 @@ function App() {
       });
       
       if (response.success) {
-        const newSchemas = [...schemas, response.data.schema];
-        setSchemas(newSchemas);
-        setSelectedSchema(response.data.schema.id);
-        await chrome.storage.local.set({ schemas: newSchemas });
+        const schema = response.data.schema;
         
-        toast.success(`Successfully parsed ${response.data.schema.title}`, {
+        // Save schema using data sync service
+        await dataSync.saveSchema(schema, user?.id);
+        
+        // Update local state
+        const newSchemas = [...schemas, schema];
+        setSchemas(newSchemas);
+        setSelectedSchema(schema.id);
+        
+        toast.success(`Successfully parsed ${schema.title}`, {
           id: toastId,
-          description: `Found ${response.data.schema.endpoints.length} endpoints`,
+          description: `Found ${schema.endpoints.length} endpoints`,
         });
       } else {
         toast.error('No API documentation found', {
@@ -64,12 +133,16 @@ function App() {
     }
   };
 
-  const handleQueryGenerated = (query: GeneratedApiCall) => {
+  const handleQueryGenerated = (query: GeneratedApiCall, naturalLanguageQuery?: string) => {
     setGeneratedQuery(query);
     setResponse(null);
+    // Store the natural language query for later saving
+    if (naturalLanguageQuery) {
+      (query as any).naturalLanguageQuery = naturalLanguageQuery;
+    }
   };
 
-  const handleExecuteQuery = async (query: GeneratedApiCall) => {
+  const handleExecuteQuery = async (query: GeneratedApiCall, naturalLanguageQuery?: string) => {
     setLoading(true);
     setResponse(null);
     const toastId = toast.loading('Executing API request...');
@@ -80,6 +153,11 @@ function App() {
         payload: { query }
       });
       setResponse(result);
+      
+      // Save query to history if provided
+      if (naturalLanguageQuery && query) {
+        await dataSync.saveQuery(naturalLanguageQuery, query, result, user?.id);
+      }
       
       if (result.success) {
         toast.success('Request successful', {
@@ -111,20 +189,49 @@ function App() {
     { id: 'settings' as Tab, label: 'Settings', icon: Settings },
   ];
 
+  if (authLoading) {
+    return (
+      <div className="w-[600px] h-[700px] bg-white text-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-[600px] h-[700px] bg-background text-foreground flex flex-col">
+    <div className="w-[600px] h-[700px] bg-white text-gray-900 flex flex-col">
       <Toaster position="top-center" richColors />
       
       {/* Header */}
-      <div className="border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold">API Doc Query Builder</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          Convert natural language to API queries
-        </p>
+      <div className="border-b border-gray-200 px-4 py-3 bg-white">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">ChillSpace API</h1>
+            <p className="text-xs text-gray-600 mt-1">
+              Convert natural language to API queries
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {user ? (
+              <UserMenu />
+            ) : (
+              <button
+                onClick={handleSignIn}
+                className="flex items-center gap-2 px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium rounded-md transition-colors"
+              >
+                <LogIn className="w-3 h-3" />
+                Sign In
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-gray-200 bg-white">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -133,8 +240,8 @@ function App() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'border-b-2 border-primary text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'border-b-2 border-primary-600 text-primary-600 bg-primary-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -145,19 +252,19 @@ function App() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-gray-50">
         {activeTab === 'query' && (
           <div className="p-4 space-y-4">
             {schemas.length === 0 ? (
               <div className="text-center py-12">
-                <Database className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground mb-4">
+                <Database className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                <p className="text-sm text-gray-600 mb-4">
                   No API schemas loaded yet
                 </p>
                 <button
                   onClick={handleParseCurrentPage}
                   disabled={loading}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-md transition-colors disabled:opacity-50"
                 >
                   {loading ? 'Parsing...' : 'Parse Current Page'}
                 </button>
@@ -165,13 +272,13 @@ function App() {
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
                     API Schema
                   </label>
                   <select
                     value={selectedSchema || ''}
                     onChange={(e) => setSelectedSchema(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-input rounded-md"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
                   >
                     {schemas.map((schema) => (
                       <option key={schema.id} value={schema.id}>
@@ -191,7 +298,8 @@ function App() {
                 {generatedQuery && (
                   <ApiPreview
                     query={generatedQuery}
-                    onExecute={handleExecuteQuery}
+                    onExecute={(query) => handleExecuteQuery(query, (generatedQuery as any).naturalLanguageQuery)}
+                    onCreateJob={handleCreateJob}
                     loading={loading}
                   />
                 )}
@@ -203,8 +311,16 @@ function App() {
         )}
 
         {activeTab === 'jobs' && (
-          <div className="p-4">
-            <JobScheduler />
+          <div>
+            {showCreateJob && jobQuery ? (
+              <CreateJobForm
+                initialQuery={jobQuery}
+                onCancel={handleJobCancelled}
+                onSuccess={handleJobCreated}
+              />
+            ) : (
+              <JobScheduler />
+            )}
           </div>
         )}
 
@@ -252,13 +368,48 @@ function App() {
 
         {activeTab === 'settings' && (
           <div className="p-4 space-y-4">
-            <h2 className="text-sm font-semibold mb-4">Settings</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Settings</h2>
+            
+            {!user && (
+              <div className="p-4 bg-primary-50 rounded-md border border-primary-200">
+                <h3 className="text-sm font-medium text-primary-900 mb-2">Authentication Required</h3>
+                <p className="text-xs text-primary-700 mb-3">
+                  Sign in to sync your schemas and queries across devices
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSignIn}
+                    className="flex-1 px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium rounded-md transition-colors"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={handleSignUp}
+                    className="flex-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium rounded-md transition-colors"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {user && (
+              <div className="p-4 bg-green-50 rounded-md border border-green-200">
+                <h3 className="text-sm font-medium text-green-800 mb-1">Signed In</h3>
+                <p className="text-xs text-green-600">
+                  {user.email}
+                </p>
+              </div>
+            )}
+            
+            {/* API Keys Section */}
+            <ApiKeysManager />
             
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-gray-900 mb-2">
                 Theme
               </label>
-              <select className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm">
+              <select className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600">
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
                 <option value="system">System</option>
@@ -266,19 +417,19 @@ function App() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-gray-900 mb-2">
                 Auto-parse API documentation
               </label>
               <div className="flex items-center space-x-2">
-                <input type="checkbox" className="rounded" defaultChecked />
-                <span className="text-sm text-muted-foreground">
+                <input type="checkbox" className="rounded border-gray-300" defaultChecked />
+                <span className="text-sm text-gray-600">
                   Automatically detect and parse API docs on page load
                 </span>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-gray-900 mb-2">
                 Request timeout (seconds)
               </label>
               <input
@@ -286,12 +437,12 @@ function App() {
                 min="5"
                 max="60"
                 defaultValue="30"
-                className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-gray-900 mb-2">
                 Maximum stored schemas
               </label>
               <input
@@ -299,21 +450,21 @@ function App() {
                 min="1"
                 max="100"
                 defaultValue="50"
-                className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-primary-600"
               />
             </div>
 
             <div className="pt-4 space-y-2">
-              <button className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90">
+              <button className="w-full px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white font-medium rounded-md transition-colors">
                 Save Settings
               </button>
               
-              <button className="w-full px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:opacity-90">
+              <button className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors">
                 Clear All Data
               </button>
             </div>
 
-            <div className="pt-4 border-t border-border">
+            {/* <div className="pt-4 border-t border-border">
               <h3 className="text-sm font-medium mb-2">About</h3>
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>API Documentation Query Builder v1.0.0</p>
@@ -322,11 +473,25 @@ function App() {
                   Configuration is handled through environment variables during development.
                 </p>
               </div>
-            </div>
+            </div> */}
           </div>
         )}
       </div>
+      
+      <AuthModal 
+        isOpen={authModalOpen} 
+        onClose={handleAuthModalClose} 
+        initialMode={authMode}
+      />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

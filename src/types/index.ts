@@ -1,4 +1,6 @@
 // API Schema Types
+export type UUID = string;
+
 export interface ApiEndpoint {
   path: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -39,7 +41,7 @@ export interface ApiResponse {
 }
 
 export interface ApiSchema {
-  id: string;
+  id: UUID;
   url: string;
   title: string;
   version?: string;
