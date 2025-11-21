@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+    font-family: "Inter", "Inter fallback", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+}
+
+@layer components {
+  /* Apply sharp corners to cards */
+  .card {
+    border-radius: 0 !important;
+  }
+  
+  /* Apply sharp corners to buttons */
+  button {
+    border-radius: 0 !important;
+  }
+  
+  .gradient-text {
+    @apply text-gray-900 font-bold;
+  }
+  
+  .animate-dot-bounce {
+    animation: bounce 2s infinite;
+  }
+  
+  .animate-dot-ping {
+    animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  
+  @keyframes bounce {
+    0%, 100% {
+      transform: translateY(-25%);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+    }
+    50% {
+      transform: translateY(0);
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+  }
+  
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+}
